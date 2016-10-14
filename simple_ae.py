@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import sys
+import argparse
 import pdb
 from tqdm import tqdm
 import numpy as np
@@ -45,10 +46,19 @@ def sliding_window(data, steplen=5, window_width=100, offset=0):
     return
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser("simple autoencoder regression")
+    parser.add_argument("--column", "-c", default=1, type=int, help="column to use")
+    parser.add_argument("--train_ratio", "-r", default=0.1, type=float, help="ratio of data for training (from beginning)")
+    parser.add_argument("--step", "-s", default=3, type=int, help="step of sliding window during training")
+    parser.add_argument("--epoch", "-e", default=3, type=int, help="number of epochs")
+    parser.add_argument("--window_width", "-w", default=100, type=int, help="window width")
+    parser.add_argument("npy_file", type=str, help="numpy file with shape (n, 2)")
+
+    args = parser.parse_args()
 
     # (n, 2), [[packets, bytes], ....]
-    data = np.load("test_data/201511111400_5ms_10M.npy").astype(np.float32)
-    data = np.squeeze(data[:,1]) # use bytes
+    data = np.load(args.npy_file).astype(np.float32)
+    data = np.squeeze(data[:,args.column])
 
     data = data/np.max(data)
     
@@ -57,29 +67,24 @@ if __name__ == '__main__':
     opt.use_cleargrads()
     opt.setup(model)
 
-    train_ratio = 0.1
-    window_width = 100
-    steplen=3
-    epoch=3
-
-    train_data = data[:int(len(data)*train_ratio)]
-    for e in range(epoch):
-        bar = tqdm(desc="learn({}/{})".format(e, epoch), total=int((len(train_data)-window_width)/steplen), ascii=True)
-        for di, w in sliding_window(train_data, steplen=steplen, window_width=window_width, offset=e):
+    train_data = data[:int(len(data)*args.train_ratio)]
+    for e in range(args.epoch):
+        bar = tqdm(desc="learn({}/{})".format(e, args.epoch), total=int((len(train_data)-args.window_width)/args.step), ascii=True)
+        for di, w in sliding_window(train_data, steplen=args.step, window_width=args.window_width, offset=e):
             opt.update(model.loss, w) # using bytes
             bar.update()
         bar.close()
         total_loss = 0
         c=0
-        for di, w in sliding_window(train_data, steplen=1, window_width=window_width):
+        for di, w in sliding_window(train_data, steplen=1, window_width=args.window_width):
             l = model.loss(w)
             total_loss += l.data
             c+=1
         print('loss={}\n'.format(total_loss/c))
 
     loss = np.zeros((data.shape[0],))
-    bar = tqdm(desc="reg.", total=len(data)-window_width, ascii=True)
-    for di, w in sliding_window(data, steplen=1, window_width=window_width):
+    bar = tqdm(desc="reg.", total=len(data)-args.window_width, ascii=True)
+    for di, w in sliding_window(data, steplen=1, window_width=args.window_width):
         l = model.loss(w)
         loss[di] = l.data
         bar.update()
